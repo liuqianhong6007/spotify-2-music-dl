@@ -1,0 +1,9 @@
+.env
+.spotify-token.json
+.musicdl-state.json
+bin/
+.go-cache/
+downloads/
+*.part
+.idea/
+.vscode/
