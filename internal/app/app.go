@@ -32,6 +32,8 @@ type Summary struct {
 	DryRun      int
 }
 
+const maxDownloadAttempts = 4
+
 func New(options config.Options, out, errOut io.Writer) *App {
 	return &App{options: options, out: out, errOut: errOut}
 }
@@ -124,14 +126,15 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 			fmt.Fprintf(a.errOut, "  搜索失败：%v\n", err)
 			continue
 		}
-		best, ranked := matcher.ChooseBest(
+		_, ranked := matcher.ChooseBest(
 			track,
 			candidates,
 			a.options.MinScore,
 			a.options.MaxDurationDiff,
 			nil,
 		)
-		if best == nil {
+		attempts := qualifiedCandidates(ranked, a.options.MinScore, a.options.MaxDurationDiff)
+		if len(attempts) == 0 {
 			summary.Failed++
 			message := "没有搜索到候选歌曲"
 			if len(ranked) > 0 {
@@ -147,33 +150,48 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 			continue
 		}
 
-		a.printMatch(*best)
 		if a.options.Verbose {
 			a.printRanked(ranked)
 		}
 		if a.options.DryRun {
+			a.printMatch(attempts[0])
 			summary.DryRun++
 			continue
 		}
 
 		var result model.DownloadResult
-		if a.options.MusicDLSaveOnNAS {
-			result, err = musicClient.SaveOnNAS(ctx, best.Candidate)
-		} else {
-			result, err = musicClient.DownloadLocal(ctx, best.Candidate, a.options.MusicDLOutputDir, a.options.Force)
-		}
-		if err != nil {
+		var matched model.MatchResult
+		var lastErr error
+		for attemptIndex, candidate := range attempts {
+			if attemptIndex > 0 {
+				fmt.Fprintf(a.out, "  尝试备用候选 %d/%d\n", attemptIndex+1, len(attempts))
+			}
+			a.printMatch(candidate)
+			if a.options.MusicDLSaveOnNAS {
+				result, err = musicClient.SaveOnNAS(ctx, candidate.Candidate)
+			} else {
+				result, err = musicClient.DownloadLocal(ctx, candidate.Candidate, a.options.MusicDLOutputDir, a.options.Force)
+			}
+			if err == nil {
+				matched = candidate
+				lastErr = nil
+				break
+			}
+			lastErr = err
 			if errors.Is(err, context.Canceled) {
 				return summary, err
 			}
+			fmt.Fprintf(a.errOut, "  候选失败：%v\n", err)
+		}
+		if lastErr != nil {
 			summary.Failed++
-			if saveErr := store.RecordFailure(track, err.Error(), ranked); saveErr != nil {
+			if saveErr := store.RecordFailure(track, lastErr.Error(), ranked); saveErr != nil {
 				return summary, saveErr
 			}
-			fmt.Fprintf(a.errOut, "  下载失败：%v\n", err)
+			fmt.Fprintf(a.errOut, "  全部候选均失败，最后错误：%v\n", lastErr)
 			continue
 		}
-		if err := store.RecordSuccess(track, *best, result, destination); err != nil {
+		if err := store.RecordSuccess(track, matched, result, destination); err != nil {
 			return summary, err
 		}
 		switch result.Status {
@@ -203,6 +221,29 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 		fmt.Fprintf(a.out, "状态文件：%s\n", a.options.MusicDLStateFile)
 	}
 	return summary, nil
+}
+
+func qualifiedCandidates(ranked []model.MatchResult, minScore, maxDurationDiff int) []model.MatchResult {
+	attempts := make([]model.MatchResult, 0, maxDownloadAttempts)
+	seen := make(map[string]struct{}, maxDownloadAttempts)
+	for _, match := range ranked {
+		if !matcher.Eligible(match, minScore, maxDurationDiff) {
+			continue
+		}
+		key := match.Candidate.Source + "\x00" + match.Candidate.ID
+		if match.Candidate.ID == "" {
+			key += "\x00" + match.Candidate.DisplayName()
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		attempts = append(attempts, match)
+		if len(attempts) >= maxDownloadAttempts {
+			break
+		}
+	}
+	return attempts
 }
 
 func (a *App) loadTracks(ctx context.Context) ([]model.SpotifyTrack, error) {

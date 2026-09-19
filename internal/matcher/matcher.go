@@ -122,19 +122,25 @@ func ChooseBest(track model.SpotifyTrack, candidates []model.Candidate, minScore
 		return nil, ranked
 	}
 	best := ranked[0]
-	if best.Score < minScore {
-		return nil, ranked
-	}
-	if best.TitleScore < 25 {
-		return nil, ranked
-	}
-	if best.DurationDiff > maxDurationDiff {
-		return nil, ranked
-	}
-	if best.ArtistScore == 0 && best.TitleScore < 52 {
+	if !Eligible(best, minScore, maxDurationDiff) {
 		return nil, ranked
 	}
 	return &best, ranked
+}
+
+// Eligible reports whether a ranked match is safe enough to attempt. Download
+// and NAS save operations use this to fall back to the next qualified source.
+func Eligible(match model.MatchResult, minScore, maxDurationDiff int) bool {
+	if match.Score < minScore {
+		return false
+	}
+	if match.TitleScore < 25 {
+		return false
+	}
+	if match.DurationDiff > maxDurationDiff {
+		return false
+	}
+	return match.ArtistScore != 0 || match.TitleScore >= 52
 }
 
 func scoreTitle(spotifyTitle, candidateTitle string) int {
