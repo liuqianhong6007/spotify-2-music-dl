@@ -58,6 +58,34 @@ func TestLikedTracksPaginationShape(t *testing.T) {
 	}
 }
 
+func TestLikedTracksPremiumRequiredErrorIsActionable(t *testing.T) {
+	auth, err := NewAuth(AuthConfig{
+		StaticAccessToken: "test-token",
+		TokenFile:         t.TempDir() + "/token.json",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient(auth, 5*time.Second, 0)
+	client.http.HTTP.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"error":{"status":403,"message":"Active premium subscription required for the owner of the app. When the subscription status changes, it can take a few hours before requests are allowed again."}}`
+		return &http.Response{
+			StatusCode: http.StatusForbidden,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    r,
+		}, nil
+	})
+
+	_, err = client.LikedTracks(context.Background(), 50)
+	if err == nil {
+		t.Fatal("LikedTracks() error = nil, want Premium error")
+	}
+	if !strings.Contains(err.Error(), "--spotify-export-file") || !strings.Contains(err.Error(), "Premium") {
+		t.Fatalf("LikedTracks() error = %q, want actionable Premium error", err)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {

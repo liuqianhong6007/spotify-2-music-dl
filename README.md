@@ -2,7 +2,7 @@
 
 使用 Go 将 Spotify “已点赞歌曲”批量同步到自建 `go-music-dl`：
 
-1. Spotify OAuth 2.0 PKCE 授权并读取全部 liked songs。
+1. 通过 Spotify OAuth 2.0 PKCE 读取全部 liked songs，或从 Exportify 导出的 CSV 导入。
 2. 使用“歌曲名 + 歌手”调用 NAS 上的 `go-music-dl` 搜索。
 3. 根据歌名、歌手、时长和音源综合评分，选择可信候选。
 4. 支持两种保存方式：
@@ -59,6 +59,9 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64   go build -trimpath -o bin/spotify-to-mus
 
 3. 记录 Client ID。本程序使用 PKCE，不需要 Client Secret。
 
+> Spotify Development Mode App 要求 App 所有者账号拥有有效的 Premium 订阅。
+> 如果 API 返回 403 `Active premium subscription required`，可改用下面的 CSV 导入方式。
+
 ## 2. 配置
 
 ```bash
@@ -70,6 +73,9 @@ cp .env.example .env
 ```dotenv
 SPOTIFY_CLIENT_ID=你的_client_id
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
+
+# 可选：Exportify 导出的 liked songs CSV；设置后跳过 Spotify API
+SPOTIFY_EXPORT_FILE=
 
 MUSICDL_BASE_URL=http://192.168.1.10:8080
 MUSICDL_MODE=auto
@@ -97,6 +103,26 @@ MUSICDL_PREFIX=music
 
 首次运行会在 `http://127.0.0.1:8888/callback` 等待 Spotify 回调，并自动打开
 授权页面。授权成功后 token 写入 `.spotify-token.json`，后续会自动刷新。
+
+如果 Spotify 返回 HTTP 403
+`Active premium subscription required for the owner of the app`，原因不是
+`go-music-dl` 配置，也不是 Client ID 错误，而是 Spotify 要求创建该 Developer
+App 的账号拥有有效 Premium。可以采取以下任一方案：
+
+1. 让拥有 Premium 的账号成为这个 App 的所有者，然后重新授权。
+2. 刚开通或续费 Premium 时等待数小时，再重试；无需删除 token，因为 token 本身有效。
+3. 使用 Exportify 等工具导出 liked songs 为 CSV，然后让本程序直接读取 CSV：
+
+   ```bash
+   ./bin/spotify-to-musicdl \
+     --musicdl-url http://192.168.1.10:8080 \
+     --spotify-export-file ~/Downloads/liked-songs.csv \
+     --save-on-nas
+   ```
+
+CSV 导入模式不会访问 Spotify Web API，也不需要 OAuth。程序兼容 Exportify 常见表头，
+并读取 `Track URI`、`Track Name`、`Artist Name(s)`、`Album Name`、
+`Track Duration (ms)`、`Added At` 和 `Explicit` 等字段。
 
 下载到程序所在机器：
 
@@ -143,6 +169,7 @@ MUSICDL_PREFIX=music
 --delay 500ms                       每次搜索后的等待时间
 --force                             忽略成功状态，强制重新处理
 --skip-failed                       跳过曾经匹配/下载失败的歌曲
+--spotify-export-file liked.csv    从 Exportify CSV 导入，跳过 Spotify API
 --no-browser                        不自动打开 Spotify 授权页面
 --quiet                             减少输出
 ```
@@ -205,6 +232,7 @@ Go 测试已覆盖：
 - 歌名/歌手/时长匹配。
 - 目标位置切换和本地文件缺失状态。
 - Cookie 请求头解析。
+- Exportify CSV 导入和 Spotify Premium 403 错误提示。
 
 ## 免责声明
 

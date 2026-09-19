@@ -16,6 +16,7 @@ type Options struct {
 	SpotifyRedirectURI string
 	SpotifyTokenFile   string
 	SpotifyAccessToken string
+	SpotifyExportFile  string
 	SpotifyPageSize    int
 	OpenBrowser        bool
 
@@ -72,6 +73,7 @@ func Parse(args []string, version string) (Options, error) {
 	fs.StringVar(&opts.SpotifyRedirectURI, "spotify-redirect-uri", envDefault("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback"), "Spotify OAuth Redirect URI")
 	fs.StringVar(&opts.SpotifyTokenFile, "spotify-token-file", envDefault("SPOTIFY_TOKEN_FILE", ".spotify-token.json"), "OAuth token 缓存文件")
 	fs.StringVar(&opts.SpotifyAccessToken, "spotify-access-token", os.Getenv("SPOTIFY_ACCESS_TOKEN"), "直接使用短期 access token")
+	fs.StringVar(&opts.SpotifyExportFile, "spotify-export-file", os.Getenv("SPOTIFY_EXPORT_FILE"), "从 Exportify CSV 导入点赞歌曲，跳过 Spotify API")
 	fs.IntVar(&opts.SpotifyPageSize, "spotify-page-size", envInt("SPOTIFY_PAGE_SIZE", 50), "Spotify 分页大小，最大 50")
 
 	noBrowser := fs.Bool("no-browser", false, "不自动打开 OAuth 授权页面")

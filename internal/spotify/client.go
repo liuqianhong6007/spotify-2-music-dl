@@ -92,7 +92,7 @@ func (c *Client) getJSON(ctx context.Context, rawURL string, target any) error {
 			continue
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return fmt.Errorf("Spotify API 请求失败 HTTP %d: %s", response.StatusCode, util.Truncate(response.Text(), 500))
+			return spotifyAPIError(response)
 		}
 		if err := json.Unmarshal(response.Body, target); err != nil {
 			return fmt.Errorf("Spotify API 返回非 JSON: %w", err)
@@ -103,6 +103,22 @@ func (c *Client) getJSON(ctx context.Context, rawURL string, target any) error {
 		return fmt.Errorf("Spotify API 鉴权失败 HTTP %d", lastResponse.StatusCode)
 	}
 	return fmt.Errorf("Spotify API 鉴权失败")
+}
+
+func spotifyAPIError(response *httpx.Response) error {
+	body := response.Text()
+	if response.StatusCode == http.StatusForbidden && strings.Contains(
+		strings.ToLower(body),
+		"active premium subscription required",
+	) {
+		return fmt.Errorf(
+			"Spotify API 拒绝请求（HTTP 403）：该 Developer App 的所有者账号需要有效的 Premium 订阅。"+
+				"如果已有 Premium，请确认创建 App 的账号就是 Premium 账号；刚开通或变更订阅后，Spotify 可能需要数小时更新权限。"+
+				"也可以先从 Exportify 导出 liked songs CSV，再使用 --spotify-export-file 跳过 Spotify Web API。原始响应：%s",
+			util.Truncate(body, 500),
+		)
+	}
+	return fmt.Errorf("Spotify API 请求失败 HTTP %d: %s", response.StatusCode, util.Truncate(body, 500))
 }
 
 type likedTracksPage struct {

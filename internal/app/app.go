@@ -37,29 +37,11 @@ func New(options config.Options, out, errOut io.Writer) *App {
 }
 
 func (a *App) Run(ctx context.Context) (Summary, error) {
-	auth, err := spotify.NewAuth(spotify.AuthConfig{
-		ClientID:          a.options.SpotifyClientID,
-		RedirectURI:       a.options.SpotifyRedirectURI,
-		TokenFile:         a.options.SpotifyTokenFile,
-		StaticAccessToken: a.options.SpotifyAccessToken,
-		OpenBrowser:       a.options.OpenBrowser,
-		Timeout:           5 * time.Minute,
-	})
+	tracks, err := a.loadTracks(ctx)
 	if err != nil {
 		return Summary{}, err
 	}
-	spotifyClient := spotify.NewClient(auth, 45*time.Second, 3)
-	if !a.options.Quiet {
-		fmt.Fprintln(a.out, "正在读取 Spotify 已点赞歌曲...")
-		spotifyClient.SetProgress(func(count, page int) {
-			fmt.Fprintf(a.out, "\r已读取 Spotify 点赞歌曲：%d 首（第 %d 页）", count, page)
-		})
-	}
-	tracks, err := spotifyClient.LikedTracks(ctx, a.options.SpotifyPageSize)
-	if err != nil {
-		return Summary{}, err
-	}
-	if !a.options.Quiet {
+	if !a.options.Quiet && a.options.SpotifyExportFile == "" {
 		fmt.Fprintln(a.out)
 	}
 	if a.options.Limit > 0 && len(tracks) > a.options.Limit {
@@ -221,6 +203,42 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 		fmt.Fprintf(a.out, "状态文件：%s\n", a.options.MusicDLStateFile)
 	}
 	return summary, nil
+}
+
+func (a *App) loadTracks(ctx context.Context) ([]model.SpotifyTrack, error) {
+	if exportFile := strings.TrimSpace(a.options.SpotifyExportFile); exportFile != "" {
+		if !a.options.Quiet {
+			fmt.Fprintf(a.out, "正在从 Spotify 导出文件导入点赞歌曲：%s\n", exportFile)
+		}
+		tracks, err := spotify.LoadExportFile(exportFile)
+		if err != nil {
+			return nil, err
+		}
+		if !a.options.Quiet {
+			fmt.Fprintf(a.out, "已导入 %d 首歌曲。\n", len(tracks))
+		}
+		return tracks, nil
+	}
+
+	auth, err := spotify.NewAuth(spotify.AuthConfig{
+		ClientID:          a.options.SpotifyClientID,
+		RedirectURI:       a.options.SpotifyRedirectURI,
+		TokenFile:         a.options.SpotifyTokenFile,
+		StaticAccessToken: a.options.SpotifyAccessToken,
+		OpenBrowser:       a.options.OpenBrowser,
+		Timeout:           5 * time.Minute,
+	})
+	if err != nil {
+		return nil, err
+	}
+	spotifyClient := spotify.NewClient(auth, 45*time.Second, 3)
+	if !a.options.Quiet {
+		fmt.Fprintln(a.out, "正在读取 Spotify 已点赞歌曲...")
+		spotifyClient.SetProgress(func(count, page int) {
+			fmt.Fprintf(a.out, "\r已读取 Spotify 点赞歌曲：%d 首（第 %d 页）", count, page)
+		})
+	}
+	return spotifyClient.LikedTracks(ctx, a.options.SpotifyPageSize)
 }
 
 func (a *App) printTrack(index, total int, track model.SpotifyTrack) {
