@@ -120,8 +120,10 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 		candidates, err := musicClient.Search(ctx, track.SearchQuery())
 		if err != nil {
 			summary.Failed++
-			if saveErr := store.RecordFailure(track, err.Error(), nil); saveErr != nil {
-				return summary, saveErr
+			if !a.options.DryRun {
+				if saveErr := store.RecordFailure(track, err.Error(), nil); saveErr != nil {
+					return summary, saveErr
+				}
 			}
 			fmt.Fprintf(a.errOut, "  搜索失败：%v\n", err)
 			continue
@@ -140,8 +142,10 @@ func (a *App) Run(ctx context.Context) (Summary, error) {
 			if len(ranked) > 0 {
 				message = fmt.Sprintf("未达到匹配阈值：最高 %d 分，%s [%s]", ranked[0].Score, ranked[0].Candidate.DisplayName(), ranked[0].Candidate.Source)
 			}
-			if saveErr := store.RecordFailure(track, message, ranked); saveErr != nil {
-				return summary, saveErr
+			if !a.options.DryRun {
+				if saveErr := store.RecordFailure(track, message, ranked); saveErr != nil {
+					return summary, saveErr
+				}
 			}
 			fmt.Fprintf(a.errOut, "  %s\n", message)
 			if a.options.Verbose {
