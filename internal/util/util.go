@@ -200,6 +200,9 @@ func IsFullwidthASCII(r rune) bool {
 }
 
 func FoldRune(r rune) rune {
+	if simplified, ok := traditionalSimplified[r]; ok {
+		r = simplified
+	}
 	if IsFullwidthASCII(r) {
 		return r - 0xFEE0
 	}

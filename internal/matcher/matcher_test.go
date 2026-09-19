@@ -39,6 +39,27 @@ func TestRemasterSuffixNormalization(t *testing.T) {
 	}
 }
 
+func TestTraditionalChineseTitleMatchesSimplifiedCandidate(t *testing.T) {
+	track := model.SpotifyTrack{
+		Name:            "滿院落葉",
+		Artists:         []string{"周传雄"},
+		DurationSeconds: 240,
+	}
+	candidates := []model.Candidate{{
+		Name:     "满院落叶",
+		Artist:   "周传雄",
+		Duration: 240,
+		Source:   "kugou",
+	}}
+	best, _ := ChooseBest(track, candidates, 70, 20, nil)
+	if best == nil {
+		t.Fatal("ChooseBest() = nil, want Traditional/Simplified match")
+	}
+	if best.TitleScore != 65 || best.ArtistScore != 25 {
+		t.Fatalf("scores = title %d artist %d, want 65/25", best.TitleScore, best.ArtistScore)
+	}
+}
+
 func TestMultipleArtists(t *testing.T) {
 	track := model.SpotifyTrack{
 		Name:            "千里之外",

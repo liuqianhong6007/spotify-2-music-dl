@@ -15,3 +15,9 @@ func TestParseEnvHeadersWithDoublePipe(t *testing.T) {
 		t.Fatalf("headers = %#v", headers)
 	}
 }
+
+func TestToSimplified(t *testing.T) {
+	if got, want := ToSimplified("滿院落葉 後來"), "满院落叶 后来"; got != want {
+		t.Fatalf("ToSimplified() = %q, want %q", got, want)
+	}
+}
